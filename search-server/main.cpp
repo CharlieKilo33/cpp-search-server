@@ -61,9 +61,7 @@ public:
         document_count_++;
         double w_size = 1. / words.size();
         for (const string &word: words) {
-            word_to_document_freqs_[word].insert(
-                    {document_id, count(words.begin(), words.end(), word) * w_size});
-
+            word_to_document_freqs_[word][document_id] += w_size;
         }
     }
 
