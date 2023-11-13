@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <numeric>
 
 using namespace std;
 
@@ -84,11 +85,10 @@ public:
 
         sort(matched_documents.begin(), matched_documents.end(),
              [](const Document &lhs, const Document &rhs) {
-                 if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+                 if (abs(lhs.relevance - rhs.relevance) < numeric_limits<double>::epsilon()) {
                      return lhs.rating > rhs.rating;
-                 } else {
-                     return lhs.relevance > rhs.relevance;
                  }
+                 return lhs.relevance > lhs.relevance;
              });
         if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
             matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
@@ -104,9 +104,7 @@ public:
     }
 
     vector<Document> FindTopDocuments(const string &raw_query) const {
-        return FindTopDocuments(raw_query, [](int id, DocumentStatus status, int rating) {
-            return status == DocumentStatus::ACTUAL;
-        });
+        return FindTopDocuments(raw_query, DocumentStatus::ACTUAL);
     }
 
     unsigned long long GetDocumentCount() const {
@@ -165,10 +163,8 @@ private:
         if (ratings.empty()) {
             return 0;
         }
-        int rating_sum = 0;
-        for (const int rating: ratings) {
-            rating_sum += rating;
-        }
+
+        int rating_sum = accumulate(ratings.begin(), ratings.end(), 0);
         return rating_sum / static_cast<int>(ratings.size());
     }
 
