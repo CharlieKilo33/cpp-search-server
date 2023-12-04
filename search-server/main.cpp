@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <numeric>
 
 using namespace std;
 
@@ -49,6 +50,7 @@ struct Document {
     Document(int id, double relevance, int rating)
             : id(id), relevance(relevance), rating(rating) {
     }
+
     int id = 0;
     double relevance = 0.0;
     int rating = 0;
@@ -74,13 +76,11 @@ enum class DocumentStatus {
 
 class SearchServer {
 public:
-    inline static constexpr int INVALID_DOCUMENT_ID = -1;
-
     template<typename StringContainer>
     explicit SearchServer(const StringContainer &stop_words)
             : stop_words_(MakeUniqueNonEmptyStrings(stop_words)) {
-        for(const string& word : stop_words){
-            if(!IsWordCorrect(word)){
+        for (const string &word: stop_words) {
+            if (!IsWordCorrect(word)) {
                 throw invalid_argument("Invalid stop words");
             }
         }
@@ -88,31 +88,21 @@ public:
 
     explicit SearchServer(const string &stop_words_text)
             : SearchServer(
-            SplitIntoWords(stop_words_text))  // Invoke delegating constructor from string container
-    {
-        for(const string& word : SplitIntoWords(stop_words_text)){
-            if(!IsWordCorrect(word)){
-                throw invalid_argument("Invalid stop words");
-            }
-        }
+            SplitIntoWords(stop_words_text)) {
     }
 
     void AddDocument(int document_id, const string &document, DocumentStatus status,
                      const vector<int> &ratings) {
         const vector<string> words = SplitIntoWordsNoStop(document);
         const double inv_word_count = 1.0 / static_cast<double>(words.size());
-        if(documents_.count(document_id)){
+        if (documents_.count(document_id)) {
             throw invalid_argument("Document with that id was added earlier");
         }
         if (document_id < 0) {
             throw invalid_argument("Document id < 0");
         }
         for (const string &word: words) {
-            if (IsWordCorrect(word)) {
-                word_to_document_freqs_[word][document_id] += inv_word_count;
-            } else {
-                throw invalid_argument("Bad document");
-            }
+            word_to_document_freqs_[word][document_id] += inv_word_count;
         }
 
         seq_num_.push_back(document_id);
@@ -123,30 +113,15 @@ public:
     [[nodiscard]] vector<Document> FindTopDocuments(const string &raw_query,
                                                     DocumentPredicate document_predicate) const {
         const Query query = ParseQuery(raw_query);
-        for (const auto &word: query.minus_words) {
-            if (word.empty() || word[0] == '-') {
-                throw invalid_argument(R"(Word after "-" is empty or has more than one "-")");
-            }
-            if (!IsWordCorrect(word)) {
-                throw invalid_argument("Bad request");
-            }
-        }
-
-        for (const auto &word: query.plus_words) {
-            if (!IsWordCorrect(word)) {
-                throw invalid_argument("Bad request");
-            }
-        }
 
         vector<Document> matched_documents = FindAllDocuments(query, document_predicate);
 
         sort(matched_documents.begin(), matched_documents.end(),
              [](const Document &lhs, const Document &rhs) {
-                 if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+                 if (abs(lhs.relevance - rhs.relevance) < std::numeric_limits<double>::epsilon()) {
                      return lhs.rating > rhs.rating;
-                 } else {
-                     return lhs.relevance > rhs.relevance;
                  }
+                 return lhs.relevance > rhs.relevance;
              });
         if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
             matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
@@ -175,19 +150,8 @@ public:
                                                                       int document_id) const {
         const Query query = ParseQuery(raw_query);
         vector<string> matched_words;
-        for (const auto &word: query.minus_words) {
-            if (word.empty() || word[0] == '-') {
-                throw invalid_argument(R"(Word after "-" is empty or has more than one "-")");
-            }
-            if (!IsWordCorrect(word)) {
-                throw invalid_argument("Bad request");
-            }
-        }
 
         for (const string &word: query.plus_words) {
-            if (!IsWordCorrect(word)) {
-                throw invalid_argument("Bad request");
-            }
             if (word_to_document_freqs_.count(word) == 0) {
                 continue;
             }
@@ -237,6 +201,9 @@ private:
             if (!IsStopWord(word)) {
                 words.push_back(word);
             }
+            if (!IsWordCorrect(word)) {
+                throw invalid_argument(word);
+            }
         }
         return words;
     }
@@ -245,10 +212,7 @@ private:
         if (ratings.empty()) {
             return 0;
         }
-        int rating_sum = 0;
-        for (const int rating: ratings) {
-            rating_sum += rating;
-        }
+        int rating_sum = std::accumulate(ratings.begin(), ratings.end(), 0);
         return rating_sum / static_cast<int>(ratings.size());
     }
 
@@ -258,14 +222,18 @@ private:
         bool is_stop;
     };
 
-    [[nodiscard]] QueryWord ParseQueryWord(string text) const {
+    [[nodiscard]] QueryWord ParseQueryWord(string word) const {
         bool is_minus = false;
         // Word shouldn't be empty
-        if (text[0] == '-') {
+        if (word[0] == '-') {
             is_minus = true;
-            text = text.substr(1);
+            word = word.substr(1);
         }
-        return {text, is_minus, IsStopWord(text)};
+        if (word.empty() || word[0] == '-' || !IsWordCorrect(word)) {
+            throw invalid_argument(word);
+        }
+
+        return {word, is_minus, IsStopWord(word)};
     }
 
     struct Query {
