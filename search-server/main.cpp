@@ -146,7 +146,7 @@ public:
         return static_cast<int>(documents_.size());
     }
 
-    [[nodiscard]] tuple<vector<string>, DocumentStatus> MatchDocument(const string &raw_query,
+    [[maybe_unused]] [[nodiscard]] tuple<vector<string>, DocumentStatus> MatchDocument(const string &raw_query,
                                                                       int document_id) const {
         const Query query = ParseQuery(raw_query);
         vector<string> matched_words;
@@ -171,7 +171,7 @@ public:
         return make_tuple(matched_words, documents_.at(document_id).status);
     }
 
-    [[nodiscard]] int GetDocumentId(int index) const {
+    [[maybe_unused]] [[nodiscard]] int GetDocumentId(int index) const {
         return seq_num_.at(index);
     }
 
@@ -294,3 +294,93 @@ private:
         return matched_documents;
     }
 };
+
+template<typename Iterator>
+class IteratorRange {
+public:
+    IteratorRange(Iterator it_begin, Iterator it_end_) : it_begin_(it_begin), it_end_(it_end_) {};
+
+    [[nodiscard]] Iterator begin() const {
+        return it_begin_;
+    }
+
+    [[nodiscard]] Iterator end() const {
+        return it_end_;
+    }
+
+    [[maybe_unused]] [[nodiscard]] size_t size() const {
+        return distance(it_begin_, it_end_);
+    }
+
+private:
+    Iterator it_begin_, it_end_;
+};
+
+template<typename Iterator>
+class Paginator {
+public:
+    Paginator(Iterator it_begin, Iterator it_end, int page_size) {
+        for (auto i = it_begin, temp_iter = it_begin; i < it_end;) {
+            auto length = distance(i, it_end);
+            if (length >= page_size) {
+                advance(temp_iter, page_size);
+            } else {
+                advance(temp_iter, length);
+            }
+            pages_in_vector_.push_back(IteratorRange(i, temp_iter));
+            i = temp_iter;
+        }
+    }
+
+    [[nodiscard]] auto begin() const {
+        return pages_in_vector_.begin();
+    }
+
+    [[nodiscard]] auto end() const {
+        return pages_in_vector_.end();
+    }
+
+    [[maybe_unused]] [[nodiscard]] size_t size() const {
+        return pages_in_vector_.size();
+    }
+
+private:
+    vector<IteratorRange<Iterator>> pages_in_vector_;
+};
+
+
+ostream &operator<<(ostream &out, const Document &document) {
+    out << "{ document_id = " << document.id << ", relevance = " << document.relevance << ", rating = "
+        << document.rating << " }";
+    return out;
+}
+
+template <typename Iterator>
+ostream &operator<<(ostream &out, const IteratorRange<Iterator> &pages){
+    for(auto i = pages.begin(); i != pages.end(); ++i){
+        out << *i;
+    }
+    return out;
+}
+
+template<typename Container>
+auto Paginate(const Container &c, size_t page_size) {
+    return Paginator(begin(c), end(c), page_size);
+}
+
+int main() {
+    SearchServer search_server("and with"s);
+    search_server.AddDocument(1, "funny pet and nasty rat"s, DocumentStatus::ACTUAL, {7, 2, 7});
+    search_server.AddDocument(2, "funny pet with curly hair"s, DocumentStatus::ACTUAL, {1, 2, 3});
+    search_server.AddDocument(3, "big cat nasty hair"s, DocumentStatus::ACTUAL, {1, 2, 8});
+    search_server.AddDocument(4, "big dog cat Vladislav"s, DocumentStatus::ACTUAL, {1, 3, 2});
+    search_server.AddDocument(5, "big dog hamster Borya"s, DocumentStatus::ACTUAL, {1, 1, 1});
+    const auto search_results = search_server.FindTopDocuments("curly dog"s);
+    int page_size = 2;
+    const auto pages = Paginate(search_results, page_size);
+    // Выводим найденные документы по страницам
+    for (auto page : pages) {
+        cout << page << endl;
+        cout << "Page break"s << endl;
+    }
+}
