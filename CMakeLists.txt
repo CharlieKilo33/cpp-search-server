@@ -23,4 +23,5 @@ add_executable(main search-server/main.cpp
         search-server/string_processing.h)
 add_executable(task7 7.cpp)
 add_executable(task8 8.cpp)
-add_executable(task9 9/main.cpp 9/log_duration.h)
+add_executable(task9 9/1.cpp 9/log_duration.h)
+add_executable(task10 9/2.cpp 9/log_duration.h)
